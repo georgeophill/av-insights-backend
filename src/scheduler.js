@@ -30,4 +30,3 @@ runJob();
 cron.schedule('0 * * * *', runJob);
 
 console.log('[scheduler] Scheduled ingestion: 0 * * * * (hourly)');
-``

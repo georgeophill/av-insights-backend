@@ -7,37 +7,15 @@ import { articleAnalysisSchema } from "../llm/articleSchema.js";
  * Fetch a small batch of pending articles.
  * We'll mark them as "processing" before analyzing to avoid duplicates.
  */
-async function claimPendingArticles(limit = 5) {
-  // 1) Select candidate ids
-  const { data: candidates, error: selectError } = await supabase
-    .from("articles")
-    .select("id")
-    .eq("ai_status", "pending")
-    .not("cleaned_content", "is", null)
-    .order("published_at", { ascending: false })
-    .limit(limit);
+async function claimPendingArticles(limit = 3) {
+  const { data: claimed, error } = await supabase.rpc("claim_pending_articles", {
+    batch_size: limit,
+  });
 
-  if (selectError)
-    throw new Error(`Select pending failed: ${selectError.message}`);
-  if (!candidates || candidates.length === 0) return [];
-
-  const ids = candidates.map((x) => x.id);
-
-  // 2) Claim them (set processing) and return full rows to process
-  const { data: claimed, error: claimError } = await supabase
-    .from("articles")
-    .update({
-      ai_status: "processing",
-      ai_started_at: new Date().toISOString(),
-      ai_error: null,
-    })
-    .in("id", ids)
-    .eq("ai_status", "pending")
-    .select("id, title, url, cleaned_content");
-
-  if (claimError) throw new Error(`Claim failed: ${claimError.message}`);
+  if (error) throw new Error(`RPC claim_pending_articles failed: ${error.message}`);
   return claimed || [];
 }
+
 
 function trimToMaxChars(text, maxChars) {
   if (!text) return "";
@@ -234,18 +212,31 @@ async function markError(id, err) {
 }
 
 async function main() {
+  const { error: resetError } = await supabase
+  .from("articles")
+  .update({ ai_status: "pending", ai_started_at: null })
+  .eq("ai_status", "processing")
+  .lt("ai_started_at", new Date(Date.now() - 30 * 60 * 1000).toISOString());
+
+  if (resetError) {
+    console.warn("[ai-worker] Failed to reset stuck processing rows:", resetError.message);
+}
+
   console.log(`[ai-worker] PID=${process.pid} started at ${new Date().toISOString()}`);
   console.log("[ai-worker] Claiming pending articles...");
-  const batch = await claimPendingArticles(3); // keep tiny for first run
+
+  const batchSize = Number(process.env.AI_BATCH_SIZE || 3);
+  const batch = await claimPendingArticles(batchSize);
+
   console.log(`[ai-worker] Claimed ${batch.length} articles`);
 
   for (const article of batch) {
     try {
       console.log(`[ai-worker] Analyzing: ${article.title}`);
       const analysis = await analyzeArticle(article);
-      await saveAnalysis(article.id, analysis);    
+
       const status = await saveAnalysis(article.id, analysis);
-      console.log(`[ai-worker] Saved as ${status}: ${article.title}`)
+      console.log(`[ai-worker] Saved as ${status}: ${article.title}`);
     } catch (err) {
       console.error("[ai-worker] Error:", err.message);
       await markError(article.id, err);
