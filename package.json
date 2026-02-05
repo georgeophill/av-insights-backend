@@ -5,7 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/index.js",
+    "schedule": "node src/scheduler.js",
+    "dev": "nodemon src/index.js",
+    "dev:schedule": "nodemon src/scheduler.js",
+    "process:ai": "node src/processors/analyzeArticles.js"
   },
   "repository": {
     "type": "git",
@@ -21,6 +26,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.94.1",
     "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1",
+    "openai": "^6.17.0",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
