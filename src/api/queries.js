@@ -594,3 +594,28 @@ export async function getRegulatoryInsights(options = {}) {
 
   return data;
 }
+
+/**
+ * Get AV locations worldwide
+ */
+export async function getAVLocations(options = {}) {
+  const { status } = options;
+
+  let query = supabase
+    .from("av_locations")
+    .select("*")
+    .order("city", { ascending: true });
+
+  // Filter by status if provided
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch AV locations: ${error.message}`);
+  }
+
+  return data;
+}

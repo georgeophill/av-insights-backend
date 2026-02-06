@@ -79,10 +79,10 @@ process.on("SIGTERM", () => shutdown("SIGTERM")); // platform/service stop
 // Run once immediately on startup
 runWorkerOnce();
 
-// Then run every 10 minutes (adjust later)
-task = cron.schedule("*/10 * * * *", () => {
+// Then run every 30 minutes (adjust later)
+task = cron.schedule("*/30 * * * *", () => {
   console.log("[ai-scheduler] Cron tick: attempting to run worker...");
   runWorkerOnce();
 });
 
-console.log("[ai-scheduler] Scheduled AI worker: every 10 minutes.");
+console.log("[ai-scheduler] Scheduled AI worker: every 30 minutes.");

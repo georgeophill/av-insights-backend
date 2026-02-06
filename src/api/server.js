@@ -16,6 +16,7 @@ import {
   getCompanyCoMentions,
   getSourceMetrics,
   getRegulatoryInsights,
+  getAVLocations,
 } from "./queries.js";
 import { openai } from "../llm/openaiClient.js";
 
@@ -216,6 +217,18 @@ app.get("/api/regulatory", async (req, res) => {
     res.json(insights);
   } catch (error) {
     console.error("Error fetching regulatory insights:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// AV Locations
+app.get("/api/locations", async (req, res) => {
+  try {
+    const status = req.query.status;
+    const locations = await getAVLocations({ status });
+    res.json(locations);
+  } catch (error) {
+    console.error("Error fetching locations:", error);
     res.status(500).json({ error: error.message });
   }
 });
