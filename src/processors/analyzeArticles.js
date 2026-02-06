@@ -2,6 +2,7 @@ import { supabase } from "../db/supabaseClient.js";
 import { openai } from "../llm/openaiClient.js";
 import { looksAVRelevant } from "../utils/avRelevanceHeuristic.js";
 import { articleAnalysisSchema } from "../llm/articleSchema.js";
+import "dotenv/config";
 
 /**
  * Fetch a small batch of pending articles.
@@ -211,16 +212,44 @@ async function markError(id, err) {
   if (error) console.error("Failed to mark error:", error.message);
 }
 
-async function main() {
-  const { error: resetError } = await supabase
-  .from("articles")
-  .update({ ai_status: "pending", ai_started_at: null })
-  .eq("ai_status", "processing")
-  .lt("ai_started_at", new Date(Date.now() - 30 * 60 * 1000).toISOString());
+async function resetStuckProcessingRows() {
+  const STUCK_MINUTES = Number.parseInt(
+    process.env.AI_STUCK_PROCESSING_MINUTES || "30",
+    10
+  );
 
-  if (resetError) {
-    console.warn("[ai-worker] Failed to reset stuck processing rows:", resetError.message);
+  const cutoffIso = new Date(Date.now() - STUCK_MINUTES * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      ai_status: "pending",
+      ai_started_at: null,
+      ai_error: null,
+    })
+    .eq("ai_status", "processing")
+    .lt("ai_started_at", cutoffIso)
+    .select("id");
+
+  if (error) {
+    console.warn("[ai-worker] Failed to reset stuck processing rows:", error.message);
+    return 0;
+  }
+
+  const count = data?.length ?? 0;
+
+  if (count > 0) {
+    console.log(
+      `[ai-worker] Reset ${count} stuck processing rows (older than ${STUCK_MINUTES}m)`
+    );
+  }
+
+  return count;
 }
+
+async function main() {
+await resetStuckProcessingRows();
+
 
   console.log(`[ai-worker] PID=${process.pid} started at ${new Date().toISOString()}`);
   console.log("[ai-worker] Claiming pending articles...");
@@ -229,21 +258,30 @@ async function main() {
   const batch = await claimPendingArticles(batchSize);
 
   console.log(`[ai-worker] Claimed ${batch.length} articles`);
+  
+  let doneCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
 
   for (const article of batch) {
     try {
       console.log(`[ai-worker] Analyzing: ${article.title}`);
       const analysis = await analyzeArticle(article);
 
-      const status = await saveAnalysis(article.id, analysis);
+      const status = await saveAnalysis(article.id, analysis);      
+      if (status === "done") doneCount += 1;
+      else if (status === "skipped") skippedCount += 1;
       console.log(`[ai-worker] Saved as ${status}: ${article.title}`);
     } catch (err) {
+      errorCount += 1;
       console.error("[ai-worker] Error:", err.message);
       await markError(article.id, err);
     }
   }
 
-  console.log("[ai-worker] Finished batch");
+  console.log(
+  `[ai-worker] Finished batch: claimed=${batch.length} done=${doneCount} skipped=${skippedCount} error=${errorCount}`
+);
 }
 
 main().catch((e) => {

@@ -1,0 +1,227 @@
+// src/api/server.js
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import {
+  getRecentArticles,
+  getTopCompanies,
+  getCategoryStats,
+  getDashboardStats,
+  getSentimentStats,
+  searchArticles,
+  getTrendingThemes,
+  getActivityTimeline,
+  getFeaturedArticles,
+  getCompanyMomentum,
+  getCompanyCoMentions,
+  getSourceMetrics,
+  getRegulatoryInsights,
+} from "./queries.js";
+
+const app = express();
+const PORT = process.env.API_PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Health check
+app.get("/", (req, res) => {
+  res.json({
+    service: "AV Insights API",
+    status: "running",
+    version: "1.0.0",
+  });
+});
+
+// Dashboard stats
+app.get("/api/stats", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const stats = await getDashboardStats({ days });
+    res.json(stats);
+  } catch (error) {
+    console.error("Error fetching stats:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Recent articles with filters
+app.get("/api/articles", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 20,
+      offset: parseInt(req.query.offset) || 0,
+      category: req.query.category || null,
+      minRelevance: parseFloat(req.query.minRelevance) || 0.5,
+      startDate: req.query.startDate || null,
+      endDate: req.query.endDate || null,
+    };
+    const articles = await getRecentArticles(options);
+    res.json(articles);
+  } catch (error) {
+    console.error("Error fetching articles:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Top companies
+app.get("/api/companies", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 20,
+      days: parseInt(req.query.days) || 30,
+    };
+    const companies = await getTopCompanies(options);
+    res.json(companies);
+  } catch (error) {
+    console.error("Error fetching companies:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Category breakdown
+app.get("/api/categories", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const categories = await getCategoryStats({ days });
+    res.json(categories);
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Sentiment distribution
+app.get("/api/sentiment", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const sentiment = await getSentimentStats({ days });
+    res.json(sentiment);
+  } catch (error) {
+    console.error("Error fetching sentiment:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Search articles
+app.get("/api/search", async (req, res) => {
+  try {
+    const searchTerm = req.query.q;
+    if (!searchTerm) {
+      return res.status(400).json({ error: "Search term 'q' is required" });
+    }
+    const options = {
+      limit: parseInt(req.query.limit) || 20,
+    };
+    const results = await searchArticles(searchTerm, options);
+    res.json(results);
+  } catch (error) {
+    console.error("Error searching articles:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Trending themes/topics
+app.get("/api/trends/themes", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 15,
+      days: parseInt(req.query.days) || 7,
+    };
+    const themes = await getTrendingThemes(options);
+    res.json(themes);
+  } catch (error) {
+    console.error("Error fetching trending themes:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Activity timeline
+app.get("/api/trends/timeline", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const timeline = await getActivityTimeline({ days });
+    res.json(timeline);
+  } catch (error) {
+    console.error("Error fetching timeline:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Featured high-impact articles
+app.get("/api/featured", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 10,
+      days: parseInt(req.query.days) || 7,
+    };
+    const featured = await getFeaturedArticles(options);
+    res.json(featured);
+  } catch (error) {
+    console.error("Error fetching featured articles:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Company momentum (trending companies)
+app.get("/api/companies/momentum", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const momentum = await getCompanyMomentum({ limit });
+    res.json(momentum);
+  } catch (error) {
+    console.error("Error fetching company momentum:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Company co-mentions
+app.get("/api/companies/co-mentions", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 10,
+      days: parseInt(req.query.days) || 30,
+    };
+    const coMentions = await getCompanyCoMentions(options);
+    res.json(coMentions);
+  } catch (error) {
+    console.error("Error fetching co-mentions:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Source performance metrics
+app.get("/api/sources", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const metrics = await getSourceMetrics({ days });
+    res.json(metrics);
+  } catch (error) {
+    console.error("Error fetching source metrics:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Regulatory insights
+app.get("/api/regulatory", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 10,
+      days: parseInt(req.query.days) || 30,
+    };
+    const insights = await getRegulatoryInsights(options);
+    res.json(insights);
+  } catch (error) {
+    console.error("Error fetching regulatory insights:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 AV Insights API running on http://localhost:${PORT}`);
+  console.log(`📊 Dashboard stats: http://localhost:${PORT}/api/stats`);
+  console.log(`📰 Recent articles: http://localhost:${PORT}/api/articles`);
+  console.log(`🏢 Top companies: http://localhost:${PORT}/api/companies`);
+});

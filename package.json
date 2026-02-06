@@ -8,9 +8,13 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",
     "schedule": "node src/scheduler.js",
+    "schedule:ai": "node src/aiScheduler.js",
     "dev": "nodemon src/index.js",
     "dev:schedule": "nodemon src/scheduler.js",
-    "process:ai": "node src/processors/analyzeArticles.js"
+    "process:ai": "node src/processors/analyzeArticles.js",
+    "test:queries": "node src/api/testQueries.js",
+    "test:analytics": "node src/api/testNewEndpoints.js",
+    "api": "node src/api/server.js"
   },
   "repository": {
     "type": "git",
@@ -24,8 +28,12 @@
   },
   "homepage": "https://github.com/georgeophill/av-insights-backend#readme",
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@supabase/supabase-js": "^2.94.1",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jsdom": "^28.0.0",
     "node-cron": "^4.2.1",
     "openai": "^6.17.0",
     "rss-parser": "^3.13.0"
