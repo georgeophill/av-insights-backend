@@ -9,6 +9,7 @@ export async function getRecentArticles(options = {}) {
     limit = 20,
     offset = 0,
     category = null,
+    sentiment = null,
     minRelevance = 0.5,
     startDate = null,
     endDate = null,
@@ -37,6 +38,10 @@ export async function getRecentArticles(options = {}) {
 
   if (category) {
     query = query.eq("ai_category", category);
+  }
+
+  if (sentiment) {
+    query = query.eq("ai_sentiment", sentiment);
   }
 
   if (startDate) {
@@ -231,6 +236,14 @@ export async function getSentimentStats(options = {}) {
 export async function searchArticles(searchTerm, options = {}) {
   const { limit = 20 } = options;
 
+  // Split into keywords
+  const keywords = searchTerm.split(/\s+/).filter(k => k.length > 2);
+  
+  if (keywords.length === 0) {
+    return [];
+  }
+
+  // Fetch a large pool of recent articles to search through
   const { data, error } = await supabase
     .from("articles")
     .select(`
@@ -245,15 +258,27 @@ export async function searchArticles(searchTerm, options = {}) {
     `)
     .eq("ai_status", "done")
     .eq("ai_av_relevance", true)
-    .or(`title.ilike.%${searchTerm}%,ai_companies.cs.["${searchTerm}"]`)
     .order("published_at", { ascending: false })
-    .limit(limit);
+    .limit(500);
 
   if (error) {
     throw new Error(`Failed to search articles: ${error.message}`);
   }
 
-  return data;
+  // Filter client-side for keywords in title, companies, or summary
+  const filteredArticles = data.filter(article => {
+    const searchText = [
+      article.title,
+      JSON.stringify(article.ai_companies || []),
+      JSON.stringify(article.ai_summary || [])
+    ].join(' ').toLowerCase();
+
+    return keywords.some(keyword => 
+      searchText.includes(keyword.toLowerCase())
+    );
+  });
+
+  return filteredArticles.slice(0, limit);
 }
 
 /**

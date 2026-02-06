@@ -45,6 +45,40 @@ Each article ultimately contains:
 
 ---
 
+## Quick Start
+
+### Prerequisites
+- Node.js 18+
+- Supabase account with database setup
+- OpenAI API key
+
+### Installation
+```bash
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### Run Everything
+```bash
+# Start all services (API + schedulers)
+npm start
+```
+
+This launches:
+- **REST API** on http://localhost:3001
+- **RSS ingestion** (runs immediately, then hourly)
+- **AI processing** (every 10 minutes)
+
+Press **Ctrl+C** to stop all services.
+
+For individual service control, see [Appendix A - Commands](#appendix-a--commands).
+
+---
+
 ## 2) MVP Outcomes (Implemented & Working)
 
 - Config-driven RSS ingestion via database-managed sources
@@ -427,21 +461,32 @@ Current throughput: ~30 articles/hour (5 articles × 6 runs)
 
 ## Appendix A — Commands
 
-### Ingestion
+### Production (All Services)
 ```bash
-npm run start          # Manual RSS ingestion run
-npm run schedule       # Hourly RSS ingestion scheduler
+npm start              # Start all services (API + RSS + AI schedulers)
 ```
 
-### AI Processing
-```bash
-npm run process:ai     # Manual AI processing run
-npm run schedule:ai    # AI worker scheduler (every 10 mins)
-```
+This runs:
+- REST API server on port 3001
+- RSS ingestion scheduler (hourly)
+- AI processing scheduler (every 10 mins)
 
-### REST API
+Press **Ctrl+C** to stop all services gracefully.
+
+### Individual Services (Development)
 ```bash
-npm run api            # Start REST API server on port 3001
+# Ingestion
+npm run ingest:once    # Manual RSS ingestion (one-time run)
+npm run schedule       # RSS ingestion scheduler only
+
+# AI Processing
+npm run process:ai     # Manual AI processing (one-time run)
+npm run schedule:ai    # AI worker scheduler only
+
+# API Server
+npm run api            # REST API server only
+
+# Testing
 npm run test:queries   # Test basic query functions
 npm run test:analytics # Test all analytics endpoints
 ```

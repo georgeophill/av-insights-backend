@@ -17,6 +17,7 @@ import {
   getSourceMetrics,
   getRegulatoryInsights,
 } from "./queries.js";
+import { openai } from "../llm/openaiClient.js";
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
@@ -53,6 +54,7 @@ app.get("/api/articles", async (req, res) => {
       limit: parseInt(req.query.limit) || 20,
       offset: parseInt(req.query.offset) || 0,
       category: req.query.category || null,
+      sentiment: req.query.sentiment || null,
       minRelevance: parseFloat(req.query.minRelevance) || 0.5,
       startDate: req.query.startDate || null,
       endDate: req.query.endDate || null,
@@ -218,9 +220,96 @@ app.get("/api/regulatory", async (req, res) => {
   }
 });
 
+// AI Chat with RAG
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { question } = req.body;
+    
+    if (!question || typeof question !== 'string') {
+      return res.status(400).json({ error: "Question is required" });
+    }
+
+    // Extract key search terms from the question using AI
+    const keywordExtraction = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{
+        role: "user",
+        content: `Extract the most important company names and key topics from this question about autonomous vehicles. Return ONLY the keywords separated by spaces, no other text: "${question}"`
+      }],
+      temperature: 0.3,
+      max_tokens: 50,
+    });
+
+    const searchTerms = keywordExtraction.choices[0].message.content.trim();
+    console.log(`[Chat] Question: "${question}" -> Search terms: "${searchTerms}"`);
+
+    // Search for relevant articles using the extracted keywords
+    const articles = await searchArticles(searchTerms, { limit: 8 });
+
+    // Build context from article summaries
+    let context = "";
+    if (articles.length > 0) {
+      context = "Here are relevant articles from the AV industry database:\n\n";
+      articles.forEach((article, idx) => {
+        const summaries = Array.isArray(article.ai_summary) 
+          ? article.ai_summary.join(' ') 
+          : '';
+        const companies = Array.isArray(article.ai_companies)
+          ? article.ai_companies.join(', ')
+          : '';
+        context += `Article ${idx + 1}: "${article.title}"\n`;
+        context += `Companies: ${companies}\n`;
+        context += `Summary: ${summaries}\n`;
+        context += `Published: ${article.published_at}\n\n`;
+      });
+    } else {
+      context = "No relevant articles found in the database.\n\n";
+    }
+
+    // Call OpenAI with RAG context
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI assistant specialized in autonomous vehicles (AV) and the AV industry. 
+Answer questions based ONLY on the provided article context. If the context doesn't contain 
+enough information to answer the question, say so clearly. Be concise but informative. 
+Always cite which companies or topics are mentioned in the articles when relevant.`
+        },
+        {
+          role: "user",
+          content: `${context}\n\nQuestion: ${question}\n\nAnswer:`
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 500,
+    });
+
+    const answer = completion.choices[0].message.content;
+
+    // Return response with sources
+    res.json({
+      answer,
+      sources: articles.map(a => ({
+        id: a.id,
+        title: a.title,
+        url: a.url,
+        published_at: a.published_at,
+        companies: a.ai_companies,
+      }))
+    });
+
+  } catch (error) {
+    console.error("Error in chat endpoint:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 AV Insights API running on http://localhost:${PORT}`);
+  console.log(`📱 Access from phone: http://192.168.0.131:${PORT}`);
   console.log(`📊 Dashboard stats: http://localhost:${PORT}/api/stats`);
   console.log(`📰 Recent articles: http://localhost:${PORT}/api/articles`);
   console.log(`🏢 Top companies: http://localhost:${PORT}/api/companies`);
