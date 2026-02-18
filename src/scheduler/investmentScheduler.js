@@ -1,7 +1,13 @@
 // src/scheduler/investmentScheduler.js
 import cron from "node-cron";
 import { updateAllStockData } from "../ingest/stockDataFetcher.js";
-import { logger } from "../utils/logger.js";
+
+// Simple console logger
+const logger = {
+  info: (msg, ...args) => console.log(`[INFO] ${msg}`, ...args),
+  warn: (msg, ...args) => console.warn(`[WARN] ${msg}`, ...args),
+  error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args),
+};
 
 /**
  * Schedule daily stock price updates

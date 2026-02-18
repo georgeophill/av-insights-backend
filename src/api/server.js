@@ -27,6 +27,7 @@ import {
   getInvestmentDashboard,
 } from "./queries.js";
 import { openai } from "../llm/openaiClient.js";
+import { initializeInvestmentSchedulers } from "../scheduler/investmentScheduler.js";
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
@@ -447,4 +448,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📊 Dashboard stats: http://localhost:${PORT}/api/stats`);
   console.log(`📰 Recent articles: http://localhost:${PORT}/api/articles`);
   console.log(`🏢 Top companies: http://localhost:${PORT}/api/companies`);
+  
+  // Initialize investment data auto-update schedulers
+  initializeInvestmentSchedulers();
 });
