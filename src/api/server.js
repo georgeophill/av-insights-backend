@@ -17,6 +17,14 @@ import {
   getSourceMetrics,
   getRegulatoryInsights,
   getAVLocations,
+  getAVCompanies,
+  getLatestStockPrices,
+  getStockPriceHistory,
+  getStockPerformance,
+  getCompanyMetrics,
+  getInvestmentSentimentCorrelation,
+  getBusinessArticles,
+  getInvestmentDashboard,
 } from "./queries.js";
 import { openai } from "../llm/openaiClient.js";
 
@@ -229,6 +237,119 @@ app.get("/api/locations", async (req, res) => {
     res.json(locations);
   } catch (error) {
     console.error("Error fetching locations:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// INVESTMENT ENDPOINTS
+// ============================================================================
+
+// Investment dashboard overview
+app.get("/api/investment/dashboard", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const dashboard = await getInvestmentDashboard({ days });
+    res.json(dashboard);
+  } catch (error) {
+    console.error("Error fetching investment dashboard:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all AV companies
+app.get("/api/investment/companies", async (req, res) => {
+  try {
+    const options = {
+      publicOnly: req.query.publicOnly === "true",
+      sector: req.query.sector || null,
+    };
+    const companies = await getAVCompanies(options);
+    res.json(companies);
+  } catch (error) {
+    console.error("Error fetching AV companies:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get latest stock prices
+app.get("/api/investment/stocks/latest", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const prices = await getLatestStockPrices({ limit });
+    res.json(prices);
+  } catch (error) {
+    console.error("Error fetching latest stock prices:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get stock price history for a specific ticker
+app.get("/api/investment/stocks/:ticker/history", async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const days = parseInt(req.query.days) || 30;
+    const history = await getStockPriceHistory(ticker, { days });
+    res.json(history);
+  } catch (error) {
+    console.error("Error fetching stock history:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get stock performance rankings
+app.get("/api/investment/stocks/performance", async (req, res) => {
+  try {
+    const options = {
+      days: parseInt(req.query.days) || 30,
+      limit: parseInt(req.query.limit) || 20,
+    };
+    const performance = await getStockPerformance(options);
+    res.json(performance);
+  } catch (error) {
+    console.error("Error fetching stock performance:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get company fundamental metrics
+app.get("/api/investment/metrics", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const metrics = await getCompanyMetrics({ limit });
+    res.json(metrics);
+  } catch (error) {
+    console.error("Error fetching company metrics:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get sentiment-price correlation
+app.get("/api/investment/sentiment-correlation", async (req, res) => {
+  try {
+    const options = {
+      days: parseInt(req.query.days) || 30,
+      minMentions: parseInt(req.query.minMentions) || 5,
+    };
+    const correlation = await getInvestmentSentimentCorrelation(options);
+    res.json(correlation);
+  } catch (error) {
+    console.error("Error fetching sentiment correlation:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get business-focused articles
+app.get("/api/investment/business-news", async (req, res) => {
+  try {
+    const options = {
+      limit: parseInt(req.query.limit) || 20,
+      days: parseInt(req.query.days) || 7,
+    };
+    const articles = await getBusinessArticles(options);
+    res.json(articles);
+  } catch (error) {
+    console.error("Error fetching business articles:", error);
     res.status(500).json({ error: error.message });
   }
 });

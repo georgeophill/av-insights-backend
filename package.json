@@ -15,7 +15,10 @@
     "process:ai": "node src/processors/analyzeArticles.js",
     "test:queries": "node src/api/testQueries.js",
     "test:analytics": "node src/api/testNewEndpoints.js",
-    "api": "node src/api/server.js"
+    "api": "node src/api/server.js",
+    "seed:companies": "node scripts/seedCompanies.js",
+    "update:stocks": "node src/ingest/stockDataFetcher.js",
+    "update:stocks:full": "node src/ingest/stockDataFetcher.js --fundamentals"
   },
   "repository": {
     "type": "git",

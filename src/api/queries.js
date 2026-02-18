@@ -619,3 +619,348 @@ export async function getAVLocations(options = {}) {
 
   return data;
 }
+
+// ============================================================================
+// INVESTMENT DATA QUERIES
+// ============================================================================
+
+/**
+ * Get all AV companies with optional filters
+ */
+export async function getAVCompanies(options = {}) {
+  const { publicOnly = false, sector = null } = options;
+
+  let query = supabase
+    .from("av_companies")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (publicOnly) {
+    query = query.eq("is_public", true).not("ticker", "is", null);
+  }
+
+  if (sector) {
+    query = query.eq("sector", sector);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch companies: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Get latest stock prices for all companies
+ */
+export async function getLatestStockPrices(options = {}) {
+  const { limit = 50 } = options;
+
+  const { data, error } = await supabase
+    .from("stock_prices")
+    .select(`
+      *,
+      av_companies (name, sector)
+    `)
+    .order("date", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to fetch stock prices: ${error.message}`);
+  }
+
+  // Group by ticker to get latest price for each
+  const latestPrices = {};
+  data.forEach((price) => {
+    if (!latestPrices[price.ticker]) {
+      latestPrices[price.ticker] = price;
+    }
+  });
+
+  return Object.values(latestPrices);
+}
+
+/**
+ * Get stock price history for a specific company
+ */
+export async function getStockPriceHistory(ticker, options = {}) {
+  const { days = 30 } = options;
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
+  const { data, error } = await supabase
+    .from("stock_prices")
+    .select(`
+      *,
+      av_companies (name, sector)
+    `)
+    .eq("ticker", ticker)
+    .gte("date", cutoffDate.toISOString().split('T')[0])
+    .order("date", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch stock history for ${ticker}: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Get stock performance metrics (returns, volatility)
+ */
+export async function getStockPerformance(options = {}) {
+  const { days = 30, limit = 20 } = options;
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
+  // Get all stock prices for the period
+  const { data, error } = await supabase
+    .from("stock_prices")
+    .select(`
+      ticker,
+      date,
+      close,
+      av_companies (name, sector)
+    `)
+    .gte("date", cutoffDate.toISOString().split('T')[0])
+    .order("ticker", { ascending: true })
+    .order("date", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch stock performance: ${error.message}`);
+  }
+
+  // Calculate performance metrics for each ticker
+  const performanceByTicker = {};
+
+  data.forEach((price) => {
+    if (!performanceByTicker[price.ticker]) {
+      performanceByTicker[price.ticker] = {
+        ticker: price.ticker,
+        name: price.av_companies?.name,
+        sector: price.av_companies?.sector,
+        prices: [],
+      };
+    }
+    performanceByTicker[price.ticker].prices.push({
+      date: price.date,
+      close: parseFloat(price.close),
+    });
+  });
+
+  // Calculate metrics
+  const performance = Object.values(performanceByTicker).map((stock) => {
+    if (stock.prices.length < 2) {
+      return null;
+    }
+
+    const prices = stock.prices.sort((a, b) => new Date(a.date) - new Date(b.date));
+    const firstPrice = prices[0].close;
+    const lastPrice = prices[prices.length - 1].close;
+    const returns = ((lastPrice - firstPrice) / firstPrice) * 100;
+
+    // Calculate daily returns for volatility
+    const dailyReturns = [];
+    for (let i = 1; i < prices.length; i++) {
+      const dailyReturn = ((prices[i].close - prices[i - 1].close) / prices[i - 1].close) * 100;
+      dailyReturns.push(dailyReturn);
+    }
+
+    // Calculate volatility (standard deviation of daily returns)
+    const avgDailyReturn = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+    const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - avgDailyReturn, 2), 0) / dailyReturns.length;
+    const volatility = Math.sqrt(variance);
+
+    return {
+      ticker: stock.ticker,
+      name: stock.name,
+      sector: stock.sector,
+      startPrice: firstPrice.toFixed(2),
+      endPrice: lastPrice.toFixed(2),
+      returns: returns.toFixed(2),
+      volatility: (volatility * Math.sqrt(252)).toFixed(2), // Annualized
+      dataPoints: prices.length,
+    };
+  }).filter(Boolean);
+
+  return performance.sort((a, b) => parseFloat(b.returns) - parseFloat(a.returns)).slice(0, limit);
+}
+
+/**
+ * Get company metrics (P/E, market cap, etc.)
+ */
+export async function getCompanyMetrics(options = {}) {
+  const { limit = 20 } = options;
+
+  // Get latest metrics for each company
+  const { data, error } = await supabase
+    .from("company_metrics")
+    .select(`
+      *,
+      av_companies (name, ticker, sector)
+    `)
+    .order("date", { ascending: false })
+    .limit(limit * 5); // Get more to ensure we have latest for each company
+
+  if (error) {
+    throw new Error(`Failed to fetch company metrics: ${error.message}`);
+  }
+
+  // Get latest metric for each company
+  const latestMetrics = {};
+  data.forEach((metric) => {
+    const companyId = metric.company_id;
+    if (!latestMetrics[companyId]) {
+      latestMetrics[companyId] = metric;
+    }
+  });
+
+  return Object.values(latestMetrics).slice(0, limit);
+}
+
+/**
+ * Get investment sentiment correlation (stock price vs news sentiment)
+ */
+export async function getInvestmentSentimentCorrelation(options = {}) {
+  const { days = 30, minMentions = 5 } = options;
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
+  // Get news sentiment
+  const { data: sentimentData, error: sentError } = await supabase
+    .from("company_news_sentiment")
+    .select("*")
+    .gte("date", cutoffDate.toISOString().split('T')[0])
+    .gte("mention_count", minMentions);
+
+  if (sentError) {
+    throw new Error(`Failed to fetch sentiment data: ${sentError.message}`);
+  }
+
+  // Get stock prices for same period
+  const { data: priceData, error: priceError } = await supabase
+    .from("stock_prices")
+    .select(`
+      ticker,
+      date,
+      close,
+      av_companies (name)
+    `)
+    .gte("date", cutoffDate.toISOString().split('T')[0]);
+
+  if (priceError) {
+    throw new Error(`Failed to fetch price data: ${priceError.message}`);
+  }
+
+  // Match companies by name and correlate
+  const correlation = {};
+
+  sentimentData.forEach((sent) => {
+    const matchingPrices = priceData.filter((p) => 
+      p.av_companies?.name === sent.company_name
+    );
+
+    if (matchingPrices.length > 0) {
+      const ticker = matchingPrices[0].ticker;
+      if (!correlation[sent.company_name]) {
+        correlation[sent.company_name] = {
+          company: sent.company_name,
+          ticker,
+          totalMentions: 0,
+          avgSentiment: 0,
+          sentimentSum: 0,
+          sentimentCount: 0,
+        };
+      }
+
+      correlation[sent.company_name].totalMentions += sent.mention_count;
+      if (sent.avg_sentiment_score !== null) {
+        correlation[sent.company_name].sentimentSum += sent.avg_sentiment_score * sent.mention_count;
+        correlation[sent.company_name].sentimentCount += sent.mention_count;
+      }
+    }
+  });
+
+  // Calculate averages
+  return Object.values(correlation).map((c) => ({
+    company: c.company,
+    ticker: c.ticker,
+    totalMentions: c.totalMentions,
+    avgSentiment: c.sentimentCount > 0 
+      ? (c.sentimentSum / c.sentimentCount).toFixed(2) 
+      : null,
+  })).sort((a, b) => b.totalMentions - a.totalMentions);
+}
+
+/**
+ * Get business-category articles for investment signals
+ */
+export async function getBusinessArticles(options = {}) {
+  const { limit = 20, days = 7 } = options;
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
+  const { data, error } = await supabase
+    .from("articles")
+    .select(`
+      id,
+      title,
+      url,
+      published_at,
+      ai_category,
+      ai_sentiment,
+      ai_impact,
+      ai_companies,
+      ai_summary,
+      sources (name)
+    `)
+    .eq("ai_status", "done")
+    .eq("ai_av_relevance", true)
+    .in("ai_category", ["business", "stocks", "markets", "partnerships"])
+    .gte("published_at", cutoffDate.toISOString())
+    .order("published_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to fetch business articles: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Get investment dashboard overview
+ */
+export async function getInvestmentDashboard(options = {}) {
+  const { days = 7 } = options;
+
+  try {
+    const [
+      topPerformers,
+      businessNews,
+      companyMetrics,
+      sentiment
+    ] = await Promise.all([
+      getStockPerformance({ days, limit: 10 }),
+      getBusinessArticles({ limit: 5, days }),
+      getCompanyMetrics({ limit: 10 }),
+      getInvestmentSentimentCorrelation({ days, minMentions: 3 })
+    ]);
+
+    return {
+      topPerformers,
+      businessNews,
+      companyMetrics,
+      sentiment,
+      period: `${days} days`
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch investment dashboard: ${error.message}`);
+  }
+}
